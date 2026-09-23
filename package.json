@@ -1,0 +1,1 @@
+{"name":"dpi-financial-review","private":true,"version":"1.0.0","type":"module","scripts":{"start":"node server.mjs","build":"node build.mjs","test":"node tests.mjs"},"engines":{"node":">=22"}}

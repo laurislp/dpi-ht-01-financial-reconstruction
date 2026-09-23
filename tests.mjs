@@ -1,0 +1,27 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import {compute,buildSubmission,validateState,submissionChecks} from './model.mjs';
+const s=JSON.parse(fs.readFileSync(new URL('./data/initial-state.json',import.meta.url),'utf8'));
+assert.equal(validateState(s),true);
+const c=compute(s);
+for(const [key,n] of Object.entries({sales:960000,profit:65000,cash:60000,assets:531000,liabilities:406000,equity:125000,inventory:112000,receivables:168000,payrollPayable:32000,payables:126000,ppeCost:260000,accumulatedDepreciation:69000,netPpe:191000,debt:131000,interestPayable:2000,openingEquity:170000,operatingCf:139000,investingCf:-80000,financingCf:-79000,indirectCf:139000,balanceGap:0,stockGap:9000}))assert.equal(c[key],n,key);
+const sub=buildSubmission(s);
+assert.equal(sub.decisions.length,100);assert.equal(new Set(sub.decisions.map(d=>d.id)).size,100);
+assert.equal(sub.decisions.filter(d=>d.reviewTier==='material_judgment').length,25);
+assert.equal(sub.reconciliations.filter(r=>r.status==='unresolved').length,1);
+assert.equal(sub.reconciliations.find(r=>r.id==='stock-count').difference,-9000);
+assert.equal(sub.certificationStatus,'pending-student-review');
+assert.equal(sub.decisions.filter(d=>d.certified).length,0);
+for(const d of sub.decisions){assert.ok(d.answer.length>10);assert.ok(d.evidence.every(id=>s.evidence.some(e=>e.id===id)));if(d.reviewTier==='material_judgment'){assert.ok(d.independentChallenge.length>=20);assert.ok(d.studentReasoning.length>=20);const e=d.statementEffect;assert.equal(e.assets,e.liabilities+e.equity,`${d.id}: effect must balance`);}}
+const stock=structuredClone(s);stock.parameters.physicalCogs=396000;const cs=compute(stock);assert.equal(cs.profit,74000);assert.equal(cs.inventory,121000);assert.equal(cs.cash,60000);assert.equal(cs.balanceGap,0);assert.equal(cs.indirectCf,139000);
+const legal=structuredClone(s);legal.parameters.legalProvision=30000;assert.equal(compute(legal).profit,60000);assert.equal(compute(legal).cash,60000);assert.equal(compute(legal).balanceGap,0);
+const disposal=structuredClone(s);disposal.parameters.disposalProvision=2000;assert.equal(compute(disposal).profit,63000);assert.equal(compute(disposal).liabilities,408000);assert.equal(compute(disposal).balanceGap,0);
+const insurance=structuredClone(s);insurance.parameters.openingInsurance=10000;insurance.parameters.insuranceExpense=6000;assert.equal(compute(insurance).prepaidInsurance,4000);assert.equal(compute(insurance).profit,59000);assert.equal(compute(insurance).balanceGap,0);assert.equal(compute(insurance).indirectCf,139000);
+const paymentMismatch=structuredClone(s);paymentMismatch.parameters.newLoan=55000;assert.notEqual(compute(paymentMismatch).balanceGap,0);assert.equal(buildSubmission(paymentMismatch).reconciliations.find(r=>r.id==='debt').status,'unresolved');
+const invalid=structuredClone(s);invalid.decisions[0].id='D002';assert.throws(()=>validateState(invalid));
+assert.ok(submissionChecks(s).issues.some(x=>x.includes('real name')));
+assert.ok(submissionChecks(stock).issues.some(x=>x.includes('Model inputs changed')));
+assert.equal(sub.schedules.insurance.rows.at(-1)[1],0);
+assert.equal(buildSubmission(insurance).schedules.insurance.rows.at(-1)[1],4000);
+assert.ok(sub.decisions.filter(d=>d.reviewTier==='material_judgment').every(d=>d.evidenceDetails.length));
+console.log('PASS: base statements, 100 IDs, 25 judgments, source references, balanced effects, honest certification, count/legal/disposal/insurance sensitivities, bank mismatch detection and duplicate rejection.');

@@ -1,0 +1,24 @@
+import fs from 'node:fs';
+import path from 'node:path';
+import {fileURLToPath} from 'node:url';
+import assert from 'node:assert/strict';
+import {validateState,buildSubmission} from './model.mjs';
+
+const root=path.dirname(fileURLToPath(import.meta.url));
+const out=path.join(root,'dist');
+const state=JSON.parse(fs.readFileSync(path.join(root,'data/state.json'),'utf8'));
+validateState(state);
+assert.ok(state.student.name.trim()&&state.student.id.trim(),'Student identity required');
+assert.ok(state.decisions.every(d=>d.certified),'All published decisions must be approved');
+const submission=buildSubmission(state);
+assert.equal(submission.financialPosition.balanceGap,0);
+assert.ok(!state.decisions.some(d=>d.draftOrigin?.includes('not yet reviewed')));
+fs.mkdirSync(path.join(out,'data'),{recursive:true});
+for(const name of ['index.html','app.js','style.css','model.mjs'])fs.copyFileSync(path.join(root,name),path.join(out,name));
+for(const name of ['evidence.json','analysis-a.json','analysis-b.json','submission-schema.json'])fs.copyFileSync(path.join(root,'data',name),path.join(out,'data',name));
+fs.cpSync(path.join(root,'sources'),path.join(out,'sources'),{recursive:true});
+fs.writeFileSync(path.join(out,'data/published-state.json'),JSON.stringify({...state,publishedReadOnly:true},null,2));
+fs.writeFileSync(path.join(out,'submission.json'),JSON.stringify(submission,null,2));
+fs.writeFileSync(path.join(root,'submission.json'),JSON.stringify(submission,null,2));
+assert.deepEqual(JSON.parse(fs.readFileSync(path.join(out,'submission.json'))),JSON.parse(JSON.stringify(submission)));
+console.log(`Built public submission: ${state.student.name}, ${state.decisions.length} approved decisions, revision ${state.revision}.`);
